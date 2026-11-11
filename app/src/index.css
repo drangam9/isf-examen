@@ -1,0 +1,61 @@
+:root {
+  font-family: 'Aptos', 'Segoe UI Variable', 'Trebuchet MS', sans-serif;
+  color: #1c302e;
+  background: #f2f5f0;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --ink: #1c302e;
+  --muted: #687874;
+  --paper: #f2f5f0;
+  --surface: #fbfcf9;
+  --line: #d8e0d9;
+  --green: #17685c;
+  --green-dark: #104c44;
+  --green-soft: #e6f0e9;
+  --coral: #c9563d;
+  --coral-soft: #f8e8e1;
+  --success: #246a50;
+  --success-soft: #e5f2e8;
+  --danger: #ad4332;
+  --danger-soft: #f8e7e2;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.5), transparent 48%),
+    repeating-linear-gradient(0deg, rgba(28, 48, 46, 0.018) 0, rgba(28, 48, 46, 0.018) 1px, transparent 1px, transparent 7px);
+}
+
+button,
+input { font: inherit; }
+button { color: inherit; }
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 3px solid #d17555;
+  outline-offset: 3px;
+}
+
+::selection { color: #fff; background: var(--green); }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
