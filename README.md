@@ -1,6 +1,6 @@
 ﻿# ISF · Simulator de examen
 
-React + Vite study app using the 506 questions extracted from the reference PDF dated 16.01.2026.
+React + Vite study app for the Conducător exam hosted by ISF, using the 506 questions extracted from the reference PDF dated 16.01.2026.
 
 - **Examen aleatoriu** is the default section. Each exam draws 40 distinct questions from the full bank. Answers are scored and reviewed at the end.
 - An optional **40-minute timer** ends the exam automatically. Its fixed deadline survives refreshes and keeps running when another section or browser tab is open. Unanswered questions appear in the final review.

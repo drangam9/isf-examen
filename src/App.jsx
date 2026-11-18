@@ -246,7 +246,7 @@ function App() {
         </a>
         <div className="topbar-note">
           <span className="status-dot" />
-          Pregătire broker de asigurare
+          Examen Conducător
         </div>
       </header>
 
@@ -254,7 +254,7 @@ function App() {
         <section className="intro-row" aria-label="Titlu">
           <div>
             <p className="eyebrow">SIMULATOR DE EXAMEN <span> / </span> 2026</p>
-            <h1>Pregătire pentru examenul ISF</h1>
+            <h1>Pregătire pentru examenul de Conducător</h1>
           </div>
           <div className="question-bank-count"><strong>{questions.length}</strong><span>întrebări<br />în bancă</span></div>
         </section>
@@ -312,7 +312,7 @@ function App() {
             )}
             {view === 'selection' && (
               <div className="selection-view">
-                <div className="section-kicker">{testLabel} <span>·</span> {isExam ? 'SIMULARE ISF' : tests.length.toString().padStart(2, '0')}</div>
+                <div className="section-kicker">{testLabel} <span>·</span> {isExam ? 'SIMULARE CONDUCĂTOR' : tests.length.toString().padStart(2, '0')}</div>
                 <div className="selection-copy">
                   <p className="range-label">{isExam ? '40 DE ÎNTREBĂRI · O NOUĂ PROVOCARE' : `ÎNTREBĂRILE ${activeTest.start}–${activeTest.end}`}</p>
                   <h2>{isExam ? 'Exersează în ritmul examenului.' : 'Un test. Un singur răspuns corect.'}</h2>
