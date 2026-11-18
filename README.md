@@ -1,16 +1,22 @@
-# React + Vite
+﻿# ISF · Simulator de examen
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite study app using the 506 questions extracted from the reference PDF dated 16.01.2026.
 
-Currently, two official plugins are available:
+- **Examen aleatoriu** is the default section. Each exam draws 40 distinct questions from the full bank. Answers are scored and reviewed at the end.
+- An optional **40-minute timer** ends the exam automatically. Its fixed deadline survives refreshes and keeps running when another section or browser tab is open. Unanswered questions appear in the final review.
+- **Teste în ordinea PDF-ului** preserves the original 13 groups (40 questions each, with 26 in the final group) and immediate answer feedback.
+- Both sections save progress in the browser. Existing PDF-order progress is migrated automatically from the previous storage key.
+- The footer's **Document de referință** link downloads the original PDF, included automatically in production builds.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Development
 
-## React Compiler
+```sh
+npm install
+npm run dev
+npm test
+npm run build
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Exam selection, timing, answer submission, and saved-session validation are covered by the dependency-free Node test suite in `src/exam.test.js`.
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+`npm run extract-questions` rebuilds the question bank from the reference PDF. GitHub Pages builds the site on pushes to `main`; Vite is configured for `/isf-examen/`.

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import questions from './data/questions.json'
+import referencePdf from '../Întrebări Conducător_16.01.2026.pdf?url'
+import { createRandomExam, expireExam, remainingSeconds, restoreExam, submitExamAnswer } from './exam.js'
 import './App.css'
 
 const TEST_SIZE = 40
-const STORAGE_KEY = 'asf-quiz-progress-v1'
+const STORAGE_KEY = 'isf-quiz-progress-v2'
+const LEGACY_STORAGE_KEY = 'asf-quiz-progress-v1'
 const EMPTY_SESSION = { questionIndex: 0, selectedAnswer: null, submitted: false }
 const answerLetters = ['A', 'B', 'C']
 const tests = Array.from({ length: Math.ceil(questions.length / TEST_SIZE) }, (_, index) => {
@@ -19,8 +22,8 @@ const tests = Array.from({ length: Math.ceil(questions.length / TEST_SIZE) }, (_
 
 function loadProgress() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
-    if (!saved || saved.version !== 1) throw new Error('No saved quiz progress')
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY) ?? 'null')
+    if (!saved || ![1, 2].includes(saved.version)) throw new Error('No saved quiz progress')
 
     const selectedTestIndex = Number.isInteger(saved.selectedTestIndex) && tests[saved.selectedTestIndex]
       ? saved.selectedTestIndex
@@ -31,7 +34,7 @@ function loadProgress() {
         ? savedSession.questionIndex
         : 0
       const answerCount = test.questions[questionIndex].answers.length
-      const selectedAnswer = Number.isInteger(savedSession.selectedAnswer) && savedSession.selectedAnswer < answerCount
+      const selectedAnswer = Number.isInteger(savedSession.selectedAnswer) && savedSession.selectedAnswer >= 0 && savedSession.selectedAnswer < answerCount
         ? savedSession.selectedAnswer
         : null
 
@@ -48,18 +51,28 @@ function loadProgress() {
     ]))
     const completedTests = Object.fromEntries(tests.map((test, index) => [index, Boolean(saved.completedTests?.[index])]))
     const view = ['selection', 'question', 'results'].includes(saved.view) ? saved.view : 'selection'
+    const mode = saved.version === 2 && saved.mode === 'ordered' ? 'ordered' : 'exam'
+    const exam = restoreExam(saved.exam, questions)
 
     return {
-      version: 1,
+      version: 2,
+      mode,
+      exam,
+      timerEnabled: Boolean(saved.timerEnabled),
       selectedTestIndex,
       sessions,
       results,
       completedTests,
-      view: view === 'results' && !completedTests[selectedTestIndex] ? 'selection' : view,
+      view: mode === 'exam'
+        ? exam?.completed ? 'results' : exam && view === 'question' ? 'question' : 'selection'
+        : view === 'results' && !completedTests[selectedTestIndex] ? 'selection' : view,
     }
   } catch {
     return {
-      version: 1,
+      version: 2,
+      mode: 'exam',
+      exam: null,
+      timerEnabled: false,
       selectedTestIndex: 0,
       sessions: Object.fromEntries(tests.map((_, index) => [index, { ...EMPTY_SESSION }])),
       results: {},
@@ -71,18 +84,25 @@ function loadProgress() {
 
 function App() {
   const [progressState, setProgressState] = useState(loadProgress)
-  const { selectedTestIndex, sessions, results, completedTests, view } = progressState
-  const activeSession = sessions[selectedTestIndex] ?? EMPTY_SESSION
+  const { selectedTestIndex, sessions, results, completedTests, view, mode, exam, timerEnabled } = progressState
+  const isExam = mode === 'exam'
+  const [now, setNow] = useState(Date.now)
+  const activeSession = isExam ? exam ?? EMPTY_SESSION : sessions[selectedTestIndex] ?? EMPTY_SESSION
   const { questionIndex, selectedAnswer, submitted } = activeSession
 
-  const activeTest = tests[selectedTestIndex]
+  const activeTest = isExam ? {
+    questions: exam ? exam.questionNumbers.map((number) => questions.find((question) => question.number === number)) : questions.slice(0, TEST_SIZE),
+  } : tests[selectedTestIndex]
   const currentQuestion = activeTest.questions[questionIndex]
-  const testResults = results[selectedTestIndex] ?? {}
+  const testResults = isExam ? exam?.results ?? {} : results[selectedTestIndex] ?? {}
   const score = Object.values(testResults).filter(Boolean).length
   const progress = ((questionIndex + 1) / activeTest.questions.length) * 100
   const answeredCount = Object.keys(testResults).length
-  const canContinue = answeredCount > 0 || questionIndex > 0 || submitted
+  const canContinue = isExam ? Boolean(exam && !exam.completed) : answeredCount > 0 || questionIndex > 0 || submitted
   const incorrectQuestions = activeTest.questions.filter((question) => testResults[question.number] === false)
+  const unansweredQuestions = activeTest.questions.filter((question) => testResults[question.number] === undefined)
+  const secondsLeft = remainingSeconds(exam, now)
+  const testLabel = isExam ? 'EXAMEN ALEATORIU' : `TEST ${activeTest.number.toString().padStart(2, '0')}`
 
   useEffect(() => {
     try {
@@ -91,6 +111,39 @@ function App() {
       // Storage can be unavailable in private or restricted browser contexts.
     }
   }, [progressState])
+
+  useEffect(() => {
+    if (!exam || exam.completed || exam.expiresAt === null) return
+    function tick() {
+      const timestamp = Date.now()
+      setNow(timestamp)
+      setProgressState((previous) => {
+        const updated = expireExam(previous.exam, timestamp)
+        return updated === previous.exam ? previous : {
+          ...previous,
+          exam: updated,
+          view: previous.mode === 'exam' ? 'results' : previous.view,
+        }
+      })
+    }
+    tick()
+    const interval = window.setInterval(tick, 250)
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [exam?.expiresAt, exam?.completed])
+
+  function selectMode(nextMode) {
+    setProgressState((previous) => ({
+      ...previous,
+      mode: nextMode,
+      view: (nextMode === 'exam' ? previous.exam?.completed : previous.completedTests[previous.selectedTestIndex]) ? 'results' : 'selection',
+    }))
+  }
 
   function selectTest(index) {
     setProgressState((previous) => ({
@@ -101,6 +154,16 @@ function App() {
   }
 
   function startTest() {
+    if (isExam) {
+      const timestamp = Date.now()
+      setNow(timestamp)
+      setProgressState((previous) => ({
+        ...previous,
+        exam: createRandomExam(questions, previous.timerEnabled, timestamp),
+        view: 'question',
+      }))
+      return
+    }
     setProgressState((previous) => ({
       ...previous,
       view: 'question',
@@ -119,6 +182,13 @@ function App() {
 
   function submitAnswer() {
     if (selectedAnswer === null) return
+    if (isExam) {
+      setProgressState((previous) => {
+        const updated = submitExamAnswer(previous.exam, questions, previous.exam.selectedAnswer)
+        return { ...previous, exam: updated, view: updated.completed ? 'results' : 'question' }
+      })
+      return
+    }
 
     setProgressState((previous) => ({
       ...previous,
@@ -170,9 +240,9 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="ASF, pagina principală">
+        <a className="brand" href="#top" onClick={() => selectMode('exam')} aria-label="ISF, pagina principală">
           <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
-          <span>ASF <i>·</i> EXAMEN</span>
+          <span>ISF <i>·</i> EXAMEN</span>
         </a>
         <div className="topbar-note">
           <span className="status-dot" />
@@ -184,13 +254,22 @@ function App() {
         <section className="intro-row" aria-label="Titlu">
           <div>
             <p className="eyebrow">SIMULATOR DE EXAMEN <span> / </span> 2026</p>
-            <h1>Teste de pregătire</h1>
+            <h1>Pregătire pentru examenul ISF</h1>
           </div>
           <div className="question-bank-count"><strong>{questions.length}</strong><span>întrebări<br />în bancă</span></div>
         </section>
 
-        <div className="quiz-layout">
-          <aside className="test-sidebar" aria-label="Selectare test">
+        <nav className="mode-navigation" aria-label="Secțiuni de pregătire">
+          <button className={`mode-choice ${isExam ? 'is-active' : ''}`} aria-pressed={isExam} onClick={() => selectMode('exam')} type="button">
+            <strong>Examen aleatoriu</strong><span>40 de întrebări · cronometru opțional</span>
+          </button>
+          <button className={`mode-choice ${!isExam ? 'is-active' : ''}`} aria-pressed={!isExam} onClick={() => selectMode('ordered')} type="button">
+            <strong>Teste în ordinea PDF-ului</strong><span>{tests.length} teste de pregătire · progres salvat</span>
+          </button>
+        </nav>
+
+        <div className={`quiz-layout ${isExam ? 'exam-layout' : ''}`}>
+          {!isExam && <aside className="test-sidebar" aria-label="Selectare test">
             <div className="sidebar-heading">
               <h2>Teste</h2>
               <span>{tests.length.toString().padStart(2, '0')}</span>
@@ -220,29 +299,44 @@ function App() {
               <span>Ultimul test: {tests.at(-1).questions.length}</span>
               <span>Progres salvat în acest browser</span>
             </div>
-          </aside>
+          </aside>}
 
-          <section className="quiz-content" aria-live="polite">
+          <section className="quiz-content">
+            {isExam && exam && !exam.completed && view === 'question' && (
+              <div className="exam-status">
+                <button className="text-button" onClick={() => setProgressState((previous) => ({ ...previous, view: 'selection' }))} type="button">← Înapoi la examen</button>
+                <span className={`exam-timer ${secondsLeft !== null && secondsLeft <= 300 ? 'is-urgent' : ''}`} role="timer" aria-label="Timp rămas" aria-live="off">
+                  {secondsLeft === null ? 'Fără cronometru' : `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`}
+                </span>
+              </div>
+            )}
             {view === 'selection' && (
               <div className="selection-view">
-                <div className="section-kicker">TEST {activeTest.number.toString().padStart(2, '0')} <span>·</span> {tests.length.toString().padStart(2, '0')}</div>
+                <div className="section-kicker">{testLabel} <span>·</span> {isExam ? 'SIMULARE ISF' : tests.length.toString().padStart(2, '0')}</div>
                 <div className="selection-copy">
-                  <p className="range-label">ÎNTREBĂRILE {activeTest.start}–{activeTest.end}</p>
-                  <h2>Un test. Un singur răspuns corect.</h2>
-                  <p className="selection-summary">{activeTest.questions.length} întrebări din banca de examen, în ordinea documentului.</p>
+                  <p className="range-label">{isExam ? '40 DE ÎNTREBĂRI · O NOUĂ PROVOCARE' : `ÎNTREBĂRILE ${activeTest.start}–${activeTest.end}`}</p>
+                  <h2>{isExam ? 'Exersează în ritmul examenului.' : 'Un test. Un singur răspuns corect.'}</h2>
+                  <p className="selection-summary">{isExam ? `40 de întrebări distincte, alese aleatoriu din cele ${questions.length} de întrebări. Un singur răspuns corect. Rezultatul și răspunsurile corecte sunt afișate la final.` : `${activeTest.questions.length} întrebări din banca de examen, în ordinea documentului.`}</p>
                   {canContinue && <p className="saved-progress">Ai răspuns deja la {answeredCount} întrebări. Poți continua de unde ai rămas.</p>}
+                  {isExam && (
+                    <label className="timer-option">
+                      <input type="checkbox" checked={canContinue ? exam.expiresAt !== null : timerEnabled} disabled={canContinue} onChange={(event) => setProgressState((previous) => ({ ...previous, timerEnabled: event.target.checked }))} />
+                      <span><strong>Cronometru de 40 de minute</strong><small>{canContinue && exam.expiresAt !== null ? 'Cronometrul continuă să ruleze până la încheierea examenului.' : 'La expirarea timpului, examenul se încheie automat.'}</small></span>
+                    </label>
+                  )}
                 </div>
                 <button className="primary-button" onClick={canContinue ? continueTest : startTest} type="button">
-                  {canContinue ? 'Continuă testul' : 'Începe testul'} <span aria-hidden="true">→</span>
+                  {canContinue ? isExam ? 'Continuă examenul' : 'Continuă testul' : isExam ? 'Începe examenul' : 'Începe testul'} <span aria-hidden="true">→</span>
                 </button>
-                <div className="selection-index"><span>01</span><span className="index-line" /><span>{tests.length.toString().padStart(2, '0')}</span></div>
+                {isExam && canContinue && <button className="text-button new-exam-button" onClick={() => setProgressState((previous) => ({ ...previous, exam: null, view: 'selection' }))} type="button">Renunță și pregătește un examen nou</button>}
+                <div className="selection-index"><span>{isExam ? 'ALEATORIU' : '01'}</span><span className="index-line" /><span>{isExam ? '40 DE ÎNTREBĂRI' : tests.length.toString().padStart(2, '0')}</span></div>
               </div>
             )}
 
             {view === 'question' && (
-              <div className="question-view" key={`${selectedTestIndex}-${questionIndex}`}>
+              <div className="question-view" key={`${mode}-${selectedTestIndex}-${questionIndex}`}>
                 <div className="question-topline">
-                  <span>TEST {activeTest.number.toString().padStart(2, '0')}</span>
+                  <span>{testLabel}</span>
                   <span>ÎNTREBAREA {questionIndex + 1}<i> / </i>{activeTest.questions.length}</span>
                 </div>
                 <div className="progress-track" aria-label={`Progres ${Math.round(progress)}%`}>
@@ -269,10 +363,12 @@ function App() {
                           name={`question-${currentQuestion.number}`}
                           onChange={() => setProgressState((previous) => ({
                             ...previous,
+                            ...(isExam ? { exam: { ...previous.exam, selectedAnswer: index } } : {
                             sessions: {
                               ...previous.sessions,
                               [selectedTestIndex]: { ...activeSession, selectedAnswer: index },
                             },
+                            }),
                           }))}
                           type="radio"
                         />
@@ -295,7 +391,7 @@ function App() {
                   <span className="answered-count">{answeredCount} / {activeTest.questions.length} rezolvate</span>
                   {!submitted ? (
                     <button className="primary-button" disabled={selectedAnswer === null} onClick={submitAnswer} type="button">
-                      Verifică răspunsul <span aria-hidden="true">→</span>
+                      {isExam ? questionIndex === activeTest.questions.length - 1 ? 'Finalizează examenul' : 'Înregistrează răspunsul' : 'Verifică răspunsul'} <span aria-hidden="true">→</span>
                     </button>
                   ) : (
                     <button className="primary-button" onClick={nextQuestion} type="button">
@@ -309,26 +405,28 @@ function App() {
 
             {view === 'results' && (
               <div className="results-view">
-                <div className="section-kicker">TEST {activeTest.number.toString().padStart(2, '0')} <span>·</span> REZULTAT</div>
+                <div className="section-kicker">{testLabel} <span>·</span> REZULTAT</div>
                 <div className="result-score">
                   <strong>{score.toString().padStart(2, '0')}</strong>
                   <span> / {activeTest.questions.length}</span>
                 </div>
-                <h2>{score === activeTest.questions.length ? 'Excelent.' : 'Test încheiat.'}</h2>
+                <h2>{isExam && exam?.timedOut ? 'Timpul a expirat.' : score === activeTest.questions.length ? 'Excelent.' : isExam ? 'Examen încheiat.' : 'Test încheiat.'}</h2>
                 <p className="result-caption">Răspunsuri corecte</p>
+                {isExam && <p className="result-breakdown">{score} corecte · {incorrectQuestions.length} greșite · {unansweredQuestions.length} fără răspuns</p>}
                 <div className="result-actions">
-                  <button className="primary-button" onClick={startTest} type="button">Reia testul <span aria-hidden="true">↻</span></button>
-                  {selectedTestIndex < tests.length - 1 && (
+                  <button className="primary-button" onClick={isExam ? () => setProgressState((previous) => ({ ...previous, exam: null, view: 'selection' })) : startTest} type="button">{isExam ? 'Examen nou' : 'Reia testul'} <span aria-hidden="true">↻</span></button>
+                  {!isExam && selectedTestIndex < tests.length - 1 && (
                     <button className="text-button" onClick={() => selectTest(selectedTestIndex + 1)} type="button">Următorul test <span aria-hidden="true">→</span></button>
                   )}
                 </div>
-                {incorrectQuestions.length > 0 && (
+                {incorrectQuestions.length + (isExam ? unansweredQuestions.length : 0) > 0 && (
                   <details className="review-list">
-                    <summary>Revizuiește răspunsurile greșite <span>{incorrectQuestions.length}</span></summary>
+                    <summary>{isExam ? 'Revizuiește întrebările greșite sau fără răspuns' : 'Revizuiește răspunsurile greșite'} <span>{incorrectQuestions.length + (isExam ? unansweredQuestions.length : 0)}</span></summary>
                     <ol>
-                      {incorrectQuestions.map((question) => (
+                      {activeTest.questions.filter((question) => testResults[question.number] === false || (isExam && testResults[question.number] === undefined)).map((question) => (
                         <li key={question.number}>
                           <p>{question.prompt}</p>
+                          {isExam && testResults[question.number] === undefined && <em>Fără răspuns. </em>}
                           <span>{question.answers.find((answer) => answer.isCorrect)?.text}</span>
                         </li>
                       ))}
@@ -341,7 +439,10 @@ function App() {
         </div>
       </main>
 
-      <footer className="page-footer"><span>ASF · BANCĂ DE ÎNTREBĂRI</span><span>DOCUMENT DE REFERINȚĂ · 16.01.2026</span></footer>
+      <footer className="page-footer">
+        <span>ISF · BANCĂ DE ÎNTREBĂRI</span>
+        <a href={referencePdf} download="Întrebări Conducător_16.01.2026.pdf">DOCUMENT DE REFERINȚĂ · 16.01.2026 <span aria-hidden="true">↓</span></a>
+      </footer>
     </div>
   )
 }
