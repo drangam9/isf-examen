@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://drangam9.github.io/isf-examen/sitemap.xml

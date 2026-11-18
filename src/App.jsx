@@ -255,6 +255,7 @@ function App() {
           <div>
             <p className="eyebrow">SIMULATOR DE EXAMEN <span> / </span> 2026</p>
             <h1>Pregătire pentru examenul de Conducător</h1>
+            <p className="intro-summary">Teste pentru examenul de Conducător organizat de ISF, cu {questions.length} întrebări din documentul de referință.</p>
           </div>
           <div className="question-bank-count"><strong>{questions.length}</strong><span>întrebări<br />în bancă</span></div>
         </section>

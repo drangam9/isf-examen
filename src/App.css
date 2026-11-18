@@ -16,6 +16,9 @@
 .eyebrow { margin: 0 0 10px; color: var(--green); }
 .eyebrow span, .section-kicker span { margin: 0 6px; color: var(--coral); }
 .intro-row h1 { margin: 0; color: var(--ink); font-family: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif; font-size: 39px; font-weight: 500; line-height: 1.1; }
+.intro-row { gap: 24px; }
+.intro-summary { max-width: 660px; margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.question-bank-count { flex-shrink: 0; }
 .question-bank-count { display: flex; align-items: center; gap: 10px; padding-bottom: 3px; color: var(--muted); font-size: 11px; line-height: 1.25; text-align: left; }
 .question-bank-count strong { color: var(--coral); font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif; font-size: 31px; font-weight: 500; }
 .quiz-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: clamp(44px, 7vw, 100px); padding: 35px 0 64px; }
